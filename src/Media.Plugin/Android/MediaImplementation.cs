@@ -188,7 +188,10 @@ namespace Plugin.Media
             {
                 throw new MediaPermissionException(nameof(Permissions.Camera));
             }
-
+            if (options.SaveToAlbum && !(await RequestStoragePermission()))
+            {
+                throw new MediaPermissionException(nameof(StoragePermission));
+            }
 
             VerifyOptions(options);
 
@@ -327,65 +330,28 @@ namespace Plugin.Media
 
 
 		async Task<bool> RequestCameraPermissions()
-		{
-			//We always have permission on anything lower than marshmallow.
-			if ((int)Build.VERSION.SdkInt < 23)
-				return true;
-
-            var checkCamera = HasPermissionInManifest(Android.Manifest.Permission.Camera);
-
-			var hasStoragePermission = await Permissions.CheckStatusAsync<StoragePermission>();
-
-			var hasCameraPermission = PermissionStatus.Granted;
-			if (checkCamera)
-				hasCameraPermission = await Permissions.CheckStatusAsync<Permissions.Camera>();
-
-
-            var permissions = new List<string>();
-
-			var camera = nameof(Permissions.Camera);
-			var storage = nameof(StoragePermission);
-
-
-			if (hasCameraPermission != PermissionStatus.Granted)
-                permissions.Add(camera);
-
-            if(hasStoragePermission != PermissionStatus.Granted)
-                permissions.Add(storage);
-
-            if (permissions.Count == 0) //good to go!
+        {
+            //We always have permission on anything lower than marshmallow.
+            if ((int)Build.VERSION.SdkInt < 23)
                 return true;
 
-			var results = new Dictionary<string, PermissionStatus>();
-			foreach(var permission in permissions)
-			{
-				switch (permission)
-				{
-					case nameof(Permissions.Camera):
-						results.Add(permission, await Permissions.RequestAsync<Permissions.Camera>());
-						break;
-					case nameof(StoragePermission):
-						results.Add(permission, await Permissions.RequestAsync<StoragePermission>());
-						break;
-				}
-			}
-			
-			if (results.ContainsKey(storage) &&
-					results[storage] != PermissionStatus.Granted)
-			{
-				Console.WriteLine("Storage permission Denied.");
-				return false;
-			}
+            //If no permission in manifest, fail fast
+            if (!HasPermissionInManifest(Android.Manifest.Permission.Camera)) return false;
 
-			if (results.ContainsKey(camera) &&
-					results[camera] != PermissionStatus.Granted)
-			{
-				Console.WriteLine("Camera permission Denied.");
-				return false;
-			}
+            var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
+            if (status != PermissionStatus.Granted)
+            {
+                Console.WriteLine("Does not have camera permission granted, requesting.");
+                var result = await Permissions.RequestAsync<Permissions.Camera>();
+                if (result != PermissionStatus.Granted)
+                {
+                    Console.WriteLine("Camera permission Denied.");
+                    return false;
+                }
+            }
 
-			return true;
-		}
+            return true;
+        }
 
         async Task<bool> RequestStoragePermission()
         {
